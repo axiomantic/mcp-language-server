@@ -71,11 +71,11 @@ func TestCodeLens(t *testing.T) {
 			t.Fatalf("Expected 'tidy' code lens but none found: %s", result)
 		}
 
-		// Typically, the tidy lens should be index 2 (1-based) for gopls, but let's log for debugging
+		// Typically, the tidy lens should be index 3 (1-based) for gopls v0.21.0+, but let's log for debugging
 		t.Logf("Code lenses: %s", result)
 
-		// Execute the code lens (use index 2 which should be the tidy lens)
-		execResult, err := tools.ExecuteCodeLens(ctx, suite.Client, filePath, 2)
+		// Execute the code lens (use index 3 which should be the tidy lens)
+		execResult, err := tools.ExecuteCodeLens(ctx, suite.Client, filePath, 3)
 		if err != nil {
 			t.Fatalf("ExecuteCodeLens failed: %v", err)
 		}
