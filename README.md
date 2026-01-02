@@ -167,6 +167,107 @@ This is an [MCP](https://modelcontextprotocol.io/introduction) server that runs 
   </div>
 </details>
 
+## Tool Availability
+
+The MCP Language Server **dynamically registers tools** based on the capabilities advertised by the underlying LSP server. Not all tools may be available for all language servers.
+
+### Core Tools (Always Available)
+
+These tools are always registered regardless of LSP server capabilities:
+
+- **`edit_file`** - Apply text edits to files (requires `TextDocumentSync`, which all LSP servers provide)
+- **`diagnostics`** - Get diagnostic information (uses push notifications, not capability-based)
+
+### Capability-Dependent Tools
+
+The following tools are only available if the LSP server supports them:
+
+- **`definition`** - Find symbol definitions
+  - Requires: `DefinitionProvider` + `WorkspaceSymbolProvider`
+  - Why both: Uses workspace/symbol to locate symbols, then definition to get code
+
+- **`references`** - Find all symbol references
+  - Requires: `ReferencesProvider`
+
+- **`hover`** - Get hover information (types, documentation)
+  - Requires: `HoverProvider`
+
+- **`rename_symbol`** - Rename symbols across the codebase
+  - Requires: `RenameProvider`
+
+- **`code_actions`** - Get available quick fixes and refactorings
+  - Requires: `CodeActionProvider`
+
+- **`signature_help`** - Get function/method signature information
+  - Requires: `SignatureHelpProvider`
+
+- **`document_symbols`** - Get hierarchical symbol outline
+  - Requires: `DocumentSymbolProvider`
+
+- **`call_hierarchy`** - Find callers/callees of functions
+  - Requires: `CallHierarchyProvider` (LSP 3.16+)
+
+- **`get_codelens`** - Get code lens hints
+  - Requires: `CodeLensProvider`
+
+- **`execute_codelens`** - Execute code lens commands
+  - Requires: `CodeLensProvider`
+
+### Checking Available Tools
+
+When starting the server, check the logs for capability information:
+
+```
+INFO: === LSP Server Capabilities ===
+INFO: Definition: true
+INFO: References: true
+INFO: Hover: true
+INFO: Rename: true
+INFO: Code Actions: true
+INFO: Code Lens: false
+INFO: Signature Help: true
+INFO: Document Symbols: true
+INFO: Call Hierarchy: true
+INFO: Workspace Symbols: true
+INFO: ===============================
+INFO: Registering core tools
+DEBUG: Registering 'definition' tool
+DEBUG: Registering 'references' tool
+...
+INFO: Skipping 'get_codelens' and 'execute_codelens' tools - LSP server doesn't support CodeLens capability
+```
+
+### Language Server Support Matrix
+
+This matrix documents observed capability support across common LSP servers:
+
+| Tool | gopls | typescript-language-server | rust-analyzer | clangd | pyright |
+|------|-------|---------------------------|---------------|---------|---------|
+| edit_file | ✅ | ✅ | ✅ | ✅ | ✅ |
+| diagnostics | ✅ | ✅ | ✅ | ✅ | ✅ |
+| definition | ✅ | ✅ | ✅ | ✅ | ✅ |
+| references | ✅ | ✅ | ✅ | ✅ | ✅ |
+| hover | ✅ | ✅ | ✅ | ✅ | ✅ |
+| rename_symbol | ✅ | ✅ | ✅ | ✅ | ✅ |
+| code_actions | ✅ | ✅ | ✅ | ✅ | ⚠️ |
+| code_lens | ✅ | ✅ | ⚠️ | ⚠️ | ❌ |
+| signature_help | ✅ | ✅ | ✅ | ✅ | ✅ |
+| document_symbols | ✅ | ✅ | ✅ | ✅ | ✅ |
+| call_hierarchy | ✅ | ✅ | ✅ | ✅ | ⚠️ |
+
+Legend:
+- ✅ Fully supported
+- ⚠️ Partial support / version-dependent
+- ❌ Not supported
+
+*Note: Matrix populated from manual testing. Your mileage may vary based on LSP server versions.*
+
+### Known Limitations
+
+1. **Dynamic Capability Updates**: Tool availability is determined at server startup based on the capabilities advertised in the `initialize` response. Dynamic capability registration (capabilities added after startup) is not currently supported.
+
+2. **Graceful Degradation**: If a tool is registered but the LSP server fails to handle the request (buggy server), the tool will return an error to the MCP client rather than failing silently.
+
 ## Tools
 
 - `definition`: Retrieves the complete source code definition of any symbol (function, type, constant, etc.) from your codebase.
