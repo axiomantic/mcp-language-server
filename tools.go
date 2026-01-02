@@ -8,9 +8,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-func (s *mcpServer) registerTools() error {
-	coreLogger.Debug("Registering MCP tools")
-
+func (s *mcpServer) registerEditFileTool() {
 	applyTextEditTool := mcp.NewTool("edit_file",
 		mcp.WithDescription("Apply multiple text edits to a file."),
 		mcp.WithArray("edits",
@@ -94,7 +92,9 @@ func (s *mcpServer) registerTools() error {
 		}
 		return mcp.NewToolResultText(response), nil
 	})
+}
 
+func (s *mcpServer) registerDefinitionTool() {
 	readDefinitionTool := mcp.NewTool("definition",
 		mcp.WithDescription("Read the source code definition of a symbol (function, type, constant, etc.) from the codebase. Returns the complete implementation code where the symbol is defined."),
 		mcp.WithString("symbolName",
@@ -118,7 +118,9 @@ func (s *mcpServer) registerTools() error {
 		}
 		return mcp.NewToolResultText(text), nil
 	})
+}
 
+func (s *mcpServer) registerReferencesTool() {
 	findReferencesTool := mcp.NewTool("references",
 		mcp.WithDescription("Find all usages and references of a symbol throughout the codebase. Returns a list of all files and locations where the symbol appears."),
 		mcp.WithString("symbolName",
@@ -142,7 +144,9 @@ func (s *mcpServer) registerTools() error {
 		}
 		return mcp.NewToolResultText(text), nil
 	})
+}
 
+func (s *mcpServer) registerDiagnosticsTool() {
 	getDiagnosticsTool := mcp.NewTool("diagnostics",
 		mcp.WithDescription("Get diagnostic information for a specific file from the language server."),
 		mcp.WithString("filePath",
@@ -184,7 +188,9 @@ func (s *mcpServer) registerTools() error {
 		}
 		return mcp.NewToolResultText(text), nil
 	})
+}
 
+func (s *mcpServer) registerGetCodeLensTool() {
 	getCodeLensTool := mcp.NewTool("get_codelens",
 		mcp.WithDescription("Get code lens hints for a given file from the language server."),
 		mcp.WithString("filePath",
@@ -208,7 +214,9 @@ func (s *mcpServer) registerTools() error {
 		}
 		return mcp.NewToolResultText(text), nil
 	})
+}
 
+func (s *mcpServer) registerExecuteCodeLensTool() {
 	executeCodeLensTool := mcp.NewTool("execute_codelens",
 		mcp.WithDescription("Execute a code lens command for a given file and lens index."),
 		mcp.WithString("filePath",
@@ -247,7 +255,9 @@ func (s *mcpServer) registerTools() error {
 		}
 		return mcp.NewToolResultText(text), nil
 	})
+}
 
+func (s *mcpServer) registerHoverTool() {
 	hoverTool := mcp.NewTool("hover",
 		mcp.WithDescription("Get hover information (type, documentation) for a symbol at the specified position."),
 		mcp.WithString("filePath",
@@ -299,7 +309,9 @@ func (s *mcpServer) registerTools() error {
 		}
 		return mcp.NewToolResultText(text), nil
 	})
+}
 
+func (s *mcpServer) registerRenameSymbolTool() {
 	renameSymbolTool := mcp.NewTool("rename_symbol",
 		mcp.WithDescription("Rename a symbol (variable, function, class, etc.) at the specified position and update all references throughout the codebase."),
 		mcp.WithString("filePath",
@@ -360,7 +372,9 @@ func (s *mcpServer) registerTools() error {
 		}
 		return mcp.NewToolResultText(text), nil
 	})
+}
 
+func (s *mcpServer) registerCodeActionsTool() {
 	codeActionsTool := mcp.NewTool("code_actions",
 		mcp.WithDescription("Get available code actions (quick fixes, refactorings) for a range"),
 		mcp.WithString("filePath",
@@ -439,7 +453,9 @@ func (s *mcpServer) registerTools() error {
 		}
 		return mcp.NewToolResultText(text), nil
 	})
+}
 
+func (s *mcpServer) registerSignatureHelpTool() {
 	signatureHelpTool := mcp.NewTool("signature_help",
 		mcp.WithDescription("Get function/method signature information at cursor position"),
 		mcp.WithString("filePath",
@@ -491,7 +507,9 @@ func (s *mcpServer) registerTools() error {
 		}
 		return mcp.NewToolResultText(text), nil
 	})
+}
 
+func (s *mcpServer) registerDocumentSymbolsTool() {
 	documentSymbolsTool := mcp.NewTool("document_symbols",
 		mcp.WithDescription("Get the hierarchical symbol outline of a file (classes, functions, methods, etc.)"),
 		mcp.WithString("filePath",
@@ -515,8 +533,9 @@ func (s *mcpServer) registerTools() error {
 		}
 		return mcp.NewToolResultText(text), nil
 	})
+}
 
-
+func (s *mcpServer) registerCallHierarchyTool() {
 	callHierarchyTool := mcp.NewTool("call_hierarchy",
 		mcp.WithDescription("Find incoming callers or outgoing callees for a symbol at the specified position."),
 		mcp.WithString("filePath",
@@ -582,6 +601,24 @@ func (s *mcpServer) registerTools() error {
 		}
 		return mcp.NewToolResultText(text), nil
 	})
+}
+
+func (s *mcpServer) registerTools() error {
+	coreLogger.Debug("Registering MCP tools")
+
+	s.registerEditFileTool()
+	s.registerDefinitionTool()
+	s.registerReferencesTool()
+	s.registerDiagnosticsTool()
+	s.registerGetCodeLensTool()
+	s.registerExecuteCodeLensTool()
+	s.registerHoverTool()
+	s.registerRenameSymbolTool()
+	s.registerCodeActionsTool()
+	s.registerSignatureHelpTool()
+	s.registerDocumentSymbolsTool()
+	s.registerCallHierarchyTool()
+
 	coreLogger.Info("Successfully registered all MCP tools")
 	return nil
 }
