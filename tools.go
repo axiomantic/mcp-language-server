@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/isaacphi/mcp-language-server/internal/lsp"
+	"github.com/isaacphi/mcp-language-server/internal/protocol"
 	"github.com/isaacphi/mcp-language-server/internal/tools"
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -603,22 +605,99 @@ func (s *mcpServer) registerCallHierarchyTool() {
 	})
 }
 
-func (s *mcpServer) registerTools() error {
-	coreLogger.Debug("Registering MCP tools")
+func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
+	// Handle nil capabilities gracefully
+	if caps == nil {
+		coreLogger.Warn("No server capabilities provided - registering minimal tool set")
+		s.registerEditFileTool()
+		s.registerDiagnosticsTool()
+		return nil
+	}
 
+	// Log capability summary for debugging
+	coreLogger.Info("=== LSP Server Capabilities ===")
+	coreLogger.Info("Definition: %v", lsp.HasDefinitionSupport(caps))
+	coreLogger.Info("References: %v", lsp.HasReferencesSupport(caps))
+	coreLogger.Info("Hover: %v", lsp.HasHoverSupport(caps))
+	coreLogger.Info("Rename: %v", lsp.HasRenameSupport(caps))
+	coreLogger.Info("Code Actions: %v", lsp.HasCodeActionSupport(caps))
+	coreLogger.Info("Code Lens: %v", lsp.HasCodeLensSupport(caps))
+	coreLogger.Info("Signature Help: %v", lsp.HasSignatureHelpSupport(caps))
+	coreLogger.Info("Document Symbols: %v", lsp.HasDocumentSymbolSupport(caps))
+	coreLogger.Info("Call Hierarchy: %v", lsp.HasCallHierarchySupport(caps))
+	coreLogger.Info("Workspace Symbols: %v", lsp.HasWorkspaceSymbolSupport(caps))
+	coreLogger.Info("===============================")
+
+	// Always register core tools (capability-independent)
+	coreLogger.Debug("Registering core tools")
 	s.registerEditFileTool()
-	s.registerDefinitionTool()
-	s.registerReferencesTool()
 	s.registerDiagnosticsTool()
-	s.registerGetCodeLensTool()
-	s.registerExecuteCodeLensTool()
-	s.registerHoverTool()
-	s.registerRenameSymbolTool()
-	s.registerCodeActionsTool()
-	s.registerSignatureHelpTool()
-	s.registerDocumentSymbolsTool()
-	s.registerCallHierarchyTool()
 
-	coreLogger.Info("Successfully registered all MCP tools")
+	// Conditionally register capability-dependent tools
+	if lsp.HasDefinitionSupport(caps) {
+		coreLogger.Debug("Registering 'definition' tool")
+		s.registerDefinitionTool()
+	} else {
+		coreLogger.Info("Skipping 'definition' tool - LSP server doesn't support Definition or WorkspaceSymbol capabilities")
+	}
+
+	if lsp.HasReferencesSupport(caps) {
+		coreLogger.Debug("Registering 'references' tool")
+		s.registerReferencesTool()
+	} else {
+		coreLogger.Info("Skipping 'references' tool - LSP server doesn't support References capability")
+	}
+
+	if lsp.HasHoverSupport(caps) {
+		coreLogger.Debug("Registering 'hover' tool")
+		s.registerHoverTool()
+	} else {
+		coreLogger.Info("Skipping 'hover' tool - LSP server doesn't support Hover capability")
+	}
+
+	if lsp.HasRenameSupport(caps) {
+		coreLogger.Debug("Registering 'rename_symbol' tool")
+		s.registerRenameSymbolTool()
+	} else {
+		coreLogger.Info("Skipping 'rename_symbol' tool - LSP server doesn't support Rename capability")
+	}
+
+	if lsp.HasCodeActionSupport(caps) {
+		coreLogger.Debug("Registering 'code_actions' tool")
+		s.registerCodeActionsTool()
+	} else {
+		coreLogger.Info("Skipping 'code_actions' tool - LSP server doesn't support CodeAction capability")
+	}
+
+	if lsp.HasSignatureHelpSupport(caps) {
+		coreLogger.Debug("Registering 'signature_help' tool")
+		s.registerSignatureHelpTool()
+	} else {
+		coreLogger.Info("Skipping 'signature_help' tool - LSP server doesn't support SignatureHelp capability")
+	}
+
+	if lsp.HasDocumentSymbolSupport(caps) {
+		coreLogger.Debug("Registering 'document_symbols' tool")
+		s.registerDocumentSymbolsTool()
+	} else {
+		coreLogger.Info("Skipping 'document_symbols' tool - LSP server doesn't support DocumentSymbol capability")
+	}
+
+	if lsp.HasCallHierarchySupport(caps) {
+		coreLogger.Debug("Registering 'call_hierarchy' tool")
+		s.registerCallHierarchyTool()
+	} else {
+		coreLogger.Info("Skipping 'call_hierarchy' tool - LSP server doesn't support CallHierarchy capability (requires LSP 3.16+)")
+	}
+
+	if lsp.HasCodeLensSupport(caps) {
+		coreLogger.Debug("Registering 'get_codelens' and 'execute_codelens' tools")
+		s.registerGetCodeLensTool()
+		s.registerExecuteCodeLensTool()
+	} else {
+		coreLogger.Info("Skipping 'get_codelens' and 'execute_codelens' tools - LSP server doesn't support CodeLens capability")
+	}
+
+	coreLogger.Info("Successfully registered MCP tools")
 	return nil
 }

@@ -120,7 +120,7 @@ func (s *mcpServer) start() error {
 		server.WithRecovery(),
 	)
 
-	err := s.registerTools()
+	err := s.registerTools(s.capabilities)
 	if err != nil {
 		return fmt.Errorf("tool registration failed: %v", err)
 	}
