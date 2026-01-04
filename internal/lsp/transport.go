@@ -169,6 +169,10 @@ func (c *Client) handleMessages() {
 			} else {
 				lspLogger.Debug("No handler for notification: %s", msg.Method)
 			}
+
+			// Notify any waiters registered for this notification
+			c.waiterRegistry.Notify(msg.Method, msg.Params)
+
 			continue
 		}
 

@@ -45,6 +45,12 @@ type Client struct {
 	openFiles   map[string]*OpenFileInfo
 	openFilesMu sync.RWMutex
 
+	// Notification waiter registry
+	waiterRegistry *WaiterRegistry
+
+	// Server capabilities
+	capabilities *protocol.ServerCapabilities
+
 	// Close synchronization
 	closeOnce sync.Once
 	closeErr  error
@@ -80,6 +86,7 @@ func NewClient(command string, args ...string) (*Client, error) {
 		serverRequestHandlers: make(map[string]ServerRequestHandler),
 		diagnostics:           make(map[protocol.DocumentUri][]protocol.Diagnostic),
 		openFiles:             make(map[string]*OpenFileInfo),
+		waiterRegistry:        NewWaiterRegistry(),
 	}
 
 	// Start the LSP server process
@@ -199,6 +206,9 @@ func (c *Client) InitializeLSPClient(ctx context.Context, workspaceDir string) (
 	if err := c.Call(ctx, "initialize", initParams, &result); err != nil {
 		return nil, fmt.Errorf("initialize failed: %w", err)
 	}
+
+	// Store server capabilities
+	c.capabilities = &result.Capabilities
 
 	if err := c.Notify(ctx, "initialized", struct{}{}); err != nil {
 		return nil, fmt.Errorf("initialized notification failed: %w", err)
@@ -438,4 +448,46 @@ func (c *Client) GetFileDiagnostics(uri protocol.DocumentUri) []protocol.Diagnos
 	defer c.diagnosticsMu.RUnlock()
 
 	return c.diagnostics[uri]
+}
+
+// WaitForNotification waits for a specific notification to arrive for a given URI
+func (c *Client) WaitForNotification(ctx context.Context, method string, uri string, timeout time.Duration) (json.RawMessage, error) {
+	waiter := &NotificationWaiter{
+		URI:      uri,
+		Ready:    make(chan struct{}),
+		Result:   nil,
+		Received: false,
+	}
+
+	c.waiterRegistry.Register(waiter)
+	defer c.waiterRegistry.Unregister(waiter)
+
+	select {
+	case <-waiter.Ready:
+		return waiter.Result, nil
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("timeout waiting for notification %s for URI %s", method, uri)
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// WaitForDiagnostics is a convenience method to wait for diagnostics for a specific file
+func (c *Client) WaitForDiagnostics(ctx context.Context, uri string, timeout time.Duration) (*protocol.PublishDiagnosticsParams, error) {
+	result, err := c.WaitForNotification(ctx, "textDocument/publishDiagnostics", uri, timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	var diagnostics protocol.PublishDiagnosticsParams
+	if err := json.Unmarshal(result, &diagnostics); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal diagnostics: %w", err)
+	}
+
+	return &diagnostics, nil
+}
+
+// GetCapabilities returns the server capabilities received during initialization
+func (c *Client) GetCapabilities() *protocol.ServerCapabilities {
+	return c.capabilities
 }
