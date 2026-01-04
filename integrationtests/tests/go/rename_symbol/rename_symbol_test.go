@@ -34,7 +34,7 @@ func TestRenameSymbol(t *testing.T) {
 
 		// Request to rename SharedConstant to UpdatedConstant at its definition
 		// The constant is defined at line 25, column 7 of types.go
-		result, err := tools.RenameSymbol(ctx, suite.Client, filePath, 25, 7, "UpdatedConstant")
+		result, err := tools.RenameSymbol(ctx, suite.Client, filePath, 25, 7, "UpdatedConstant", true)
 		if err != nil {
 			t.Fatalf("RenameSymbol failed: %v", err)
 		}
@@ -92,7 +92,7 @@ func TestRenameSymbol(t *testing.T) {
 
 		// Request to rename a symbol at a position where no symbol exists
 		// The clean.go file doesn't have content at this position
-		_, err = tools.RenameSymbol(ctx, suite.Client, filePath, 10, 10, "NewName")
+		_, err = tools.RenameSymbol(ctx, suite.Client, filePath, 10, 10, "NewName", true)
 
 		// Expect an error because there's no symbol at that position
 		if err == nil {

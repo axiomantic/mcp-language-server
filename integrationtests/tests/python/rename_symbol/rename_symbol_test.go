@@ -44,7 +44,7 @@ func TestRenameSymbol(t *testing.T) {
 
 		// Request to rename SHARED_CONSTANT to UPDATED_CONSTANT at its definition
 		// The constant is defined at line 8, column 1 of helper.py
-		result, err := tools.RenameSymbol(ctx, suite.Client, filePath, 8, 1, "UPDATED_CONSTANT")
+		result, err := tools.RenameSymbol(ctx, suite.Client, filePath, 8, 1, "UPDATED_CONSTANT", true)
 		if err != nil {
 			t.Fatalf("RenameSymbol failed: %v", err)
 		}
@@ -121,7 +121,7 @@ def dummy_function():
 		time.Sleep(1 * time.Second) // Give time for the file to be processed
 
 		// Request to rename a symbol at a position where no symbol exists (in whitespace)
-		result, err := tools.RenameSymbol(ctx, suite.Client, testFilePath, 4, 1, "NewName")
+		result, err := tools.RenameSymbol(ctx, suite.Client, testFilePath, 4, 1, "NewName", true)
 
 		// The language server might actually succeed with no rename operations
 		// In this case, we check if it reports no occurrences

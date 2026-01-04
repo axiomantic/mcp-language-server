@@ -52,7 +52,7 @@ func TestRenameSymbol(t *testing.T) {
 		// Request to rename SharedConstant to UpdatedConstant at its definition
 		// The constant is defined at line 39, column 14 of helper.ts
 		helperPath := filepath.Join(suite.WorkspaceDir, "helper.ts")
-		result, err := tools.RenameSymbol(ctx, suite.Client, helperPath, 39, 14, "UpdatedConstant")
+		result, err := tools.RenameSymbol(ctx, suite.Client, helperPath, 39, 14, "UpdatedConstant", true)
 		if err != nil {
 			t.Fatalf("RenameSymbol failed: %v", err)
 		}
@@ -122,7 +122,7 @@ function dummyFunction(): void {
 		time.Sleep(1 * time.Second) // Give time for the file to be processed
 
 		// Request to rename a symbol at a position where no symbol exists (in whitespace)
-		result, err := tools.RenameSymbol(ctx, suite.Client, testFilePath, 4, 1, "NewName")
+		result, err := tools.RenameSymbol(ctx, suite.Client, testFilePath, 4, 1, "NewName", true)
 
 		// The language server might actually succeed with no rename operations
 		// In this case, we check if it reports no occurrences

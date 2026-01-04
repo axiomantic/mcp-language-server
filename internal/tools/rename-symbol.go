@@ -13,7 +13,11 @@ import (
 
 // RenameSymbol renames a symbol (variable, function, class, etc.) at the specified position
 // It uses the LSP rename functionality to handle all references across files
-func RenameSymbol(ctx context.Context, client *lsp.Client, filePath string, line, column int, newName string) (string, error) {
+//
+// If validate is true (default), calls PrepareRename first to validate the rename operation.
+// If PrepareRename fails, returns an error without attempting the rename.
+// Set validate to false to skip validation and attempt rename directly (for backward compatibility).
+func RenameSymbol(ctx context.Context, client *lsp.Client, filePath string, line, column int, newName string, validate bool) (string, error) {
 	// Open the file if not already open
 	err := client.OpenFile(ctx, filePath)
 	if err != nil {
@@ -36,8 +40,27 @@ func RenameSymbol(ctx context.Context, client *lsp.Client, filePath string, line
 		NewName:  newName,
 	}
 
-	// Skip the PrepareRename check as it might not be supported by all language servers
-	// Execute the rename directly
+	// If validation is requested, call PrepareRename first
+	if validate {
+		prepareParams := protocol.PrepareRenameParams{
+			TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+				TextDocument: protocol.TextDocumentIdentifier{
+					URI: uri,
+				},
+				Position: position,
+			},
+		}
+
+		prepareResult, err := client.PrepareRename(ctx, prepareParams)
+		if err != nil {
+			return "", fmt.Errorf("rename validation failed: %v", err)
+		}
+
+		// If PrepareRename returns nil result, the position cannot be renamed
+		if prepareResult.Value == nil {
+			return "", fmt.Errorf("symbol at position cannot be renamed")
+		}
+	}
 
 	// Execute the rename operation
 	workspaceEdit, err := client.Rename(ctx, params)
