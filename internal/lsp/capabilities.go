@@ -158,6 +158,31 @@ func HasSemanticTokensSupport(caps *protocol.ServerCapabilities) bool {
 	return caps.SemanticTokensProvider != nil
 }
 
+// HasTypeHierarchySupport checks if the server supports type hierarchy
+// (textDocument/prepareTypeHierarchy, typeHierarchy/supertypes, typeHierarchy/subtypes).
+//
+// Type Hierarchy was added in LSP 3.17.0.
+//
+// CRITICAL: Uses two-part check for Or_* type (pointer != nil && .Value != nil).
+func HasTypeHierarchySupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.TypeHierarchyProvider != nil &&
+		caps.TypeHierarchyProvider.Value != nil
+}
+
+// HasInlayHintSupport checks if the server supports textDocument/inlayHint.
+//
+// InlayHintProvider is interface{} type - can be InlayHintOptions or InlayHintRegistrationOptions.
+// Simple nil check is sufficient (no .Value field to check).
+func HasInlayHintSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.InlayHintProvider != nil
+}
+
 // AlwaysSupported returns true for core tools that don't require capability checks.
 //
 // Core tools:

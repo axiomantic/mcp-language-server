@@ -439,3 +439,90 @@ func TestHasSemanticTokensSupport(t *testing.T) {
 		})
 	}
 }
+
+func TestHasTypeHierarchySupport(t *testing.T) {
+	tests := []struct {
+		name     string
+		caps     *protocol.ServerCapabilities
+		expected bool
+	}{
+		{
+			name: "type hierarchy supported",
+			caps: &protocol.ServerCapabilities{
+				TypeHierarchyProvider: &protocol.Or_ServerCapabilities_typeHierarchyProvider{
+					Value: true,
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "type hierarchy Value nil",
+			caps: &protocol.ServerCapabilities{
+				TypeHierarchyProvider: &protocol.Or_ServerCapabilities_typeHierarchyProvider{
+					Value: nil,
+				},
+			},
+			expected: false,
+		},
+		{
+			name: "type hierarchy provider nil",
+			caps: &protocol.ServerCapabilities{
+				TypeHierarchyProvider: nil,
+			},
+			expected: false,
+		},
+		{
+			name:     "nil capabilities",
+			caps:     nil,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := HasTypeHierarchySupport(tt.caps)
+			if result != tt.expected {
+				t.Errorf("HasTypeHierarchySupport() = %v, expected %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestHasInlayHintSupport(t *testing.T) {
+	tests := []struct {
+		name     string
+		caps     *protocol.ServerCapabilities
+		expected bool
+	}{
+		{
+			name: "inlay hint supported",
+			caps: &protocol.ServerCapabilities{
+				InlayHintProvider: map[string]interface{}{
+					"resolveProvider": true,
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "inlay hint not supported (nil)",
+			caps: &protocol.ServerCapabilities{
+				InlayHintProvider: nil,
+			},
+			expected: false,
+		},
+		{
+			name:     "nil capabilities",
+			caps:     nil,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := HasInlayHintSupport(tt.caps)
+			if result != tt.expected {
+				t.Errorf("HasInlayHintSupport() = %v, expected %v", result, tt.expected)
+			}
+		})
+	}
+}
