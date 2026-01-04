@@ -332,6 +332,9 @@ func (s *mcpServer) registerRenameSymbolTool() {
 			mcp.Required(),
 			mcp.Description("The new name for the symbol"),
 		),
+		mcp.WithBoolean("validate",
+			mcp.Description("Whether to validate the rename operation using PrepareRename before executing (default: true)"),
+		),
 	)
 
 	s.mcpServer.AddTool(renameSymbolTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -366,8 +369,16 @@ func (s *mcpServer) registerRenameSymbolTool() {
 			return mcp.NewToolResultError("column must be a number"), nil
 		}
 
-		coreLogger.Debug("Executing rename_symbol for file: %s line: %d column: %d newName: %s", filePath, line, column, newName)
-		text, err := tools.RenameSymbol(s.ctx, s.lspClient, filePath, line, column, newName)
+		// Extract optional validate parameter (default to true)
+		validate := true
+		if v, ok := request.Params.Arguments["validate"]; ok {
+			if b, isBool := v.(bool); isBool {
+				validate = b
+			}
+		}
+
+		coreLogger.Debug("Executing rename_symbol for file: %s line: %d column: %d newName: %s validate: %v", filePath, line, column, newName, validate)
+		text, err := tools.RenameSymbol(s.ctx, s.lspClient, filePath, line, column, newName, validate)
 		if err != nil {
 			coreLogger.Error("Failed to rename symbol: %v", err)
 			return mcp.NewToolResultError(fmt.Sprintf("failed to rename symbol: %v", err)), nil
@@ -605,6 +616,317 @@ func (s *mcpServer) registerCallHierarchyTool() {
 	})
 }
 
+func (s *mcpServer) registerSemanticTokensTool() {
+	semanticTokensTool := mcp.NewTool("semantic_tokens",
+		mcp.WithDescription("Get semantic token information for syntax highlighting, showing token types and modifiers for code elements."),
+		mcp.WithString("filePath",
+			mcp.Required(),
+			mcp.Description("Path to the file to get semantic tokens for"),
+		),
+	)
+
+	s.mcpServer.AddTool(semanticTokensTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		filePath, ok := request.Params.Arguments["filePath"].(string)
+		if !ok {
+			return mcp.NewToolResultError("filePath must be a string"), nil
+		}
+
+		coreLogger.Debug("Executing semantic_tokens for file: %s", filePath)
+		text, err := tools.GetSemanticTokens(ctx, s.lspClient, filePath)
+		if err != nil {
+			coreLogger.Error("Failed to get semantic tokens: %v", err)
+			return mcp.NewToolResultError(fmt.Sprintf("failed to get semantic tokens: %v", err)), nil
+		}
+		return mcp.NewToolResultText(text), nil
+	})
+}
+
+func (s *mcpServer) registerTypeHierarchyTool() {
+	typeHierarchyTool := mcp.NewTool("type_hierarchy",
+		mcp.WithDescription("Navigate type hierarchies to find supertypes (parent classes/interfaces) or subtypes (derived classes/implementations) of a type."),
+		mcp.WithString("filePath",
+			mcp.Required(),
+			mcp.Description("Path to the file containing the type"),
+		),
+		mcp.WithNumber("line",
+			mcp.Required(),
+			mcp.Description("Line number where the type is located (1-indexed)"),
+		),
+		mcp.WithNumber("column",
+			mcp.Required(),
+			mcp.Description("Column number where the type is located (1-indexed)"),
+		),
+		mcp.WithString("direction",
+			mcp.Required(),
+			mcp.Description("Direction: 'supertypes' for parent types, 'subtypes' for derived types, or 'both'"),
+		),
+	)
+
+	s.mcpServer.AddTool(typeHierarchyTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		filePath, ok := request.Params.Arguments["filePath"].(string)
+		if !ok {
+			return mcp.NewToolResultError("filePath must be a string"), nil
+		}
+
+		direction, ok := request.Params.Arguments["direction"].(string)
+		if !ok {
+			return mcp.NewToolResultError("direction must be a string"), nil
+		}
+
+		if direction != "supertypes" && direction != "subtypes" && direction != "both" {
+			return mcp.NewToolResultError("direction must be 'supertypes', 'subtypes', or 'both'"), nil
+		}
+
+		var line, column int
+		switch v := request.Params.Arguments["line"].(type) {
+		case float64:
+			line = int(v)
+		case int:
+			line = v
+		default:
+			return mcp.NewToolResultError("line must be a number"), nil
+		}
+
+		switch v := request.Params.Arguments["column"].(type) {
+		case float64:
+			column = int(v)
+		case int:
+			column = v
+		default:
+			return mcp.NewToolResultError("column must be a number"), nil
+		}
+
+		coreLogger.Debug("Executing type_hierarchy for file: %s line: %d column: %d direction: %s", filePath, line, column, direction)
+		text, err := tools.GetTypeHierarchy(ctx, s.lspClient, filePath, line, column, direction)
+		if err != nil {
+			coreLogger.Error("Failed to get type hierarchy: %v", err)
+			return mcp.NewToolResultError(fmt.Sprintf("failed to get type hierarchy: %v", err)), nil
+		}
+		return mcp.NewToolResultText(text), nil
+	})
+}
+
+func (s *mcpServer) registerInlayHintsTool() {
+	inlayHintsTool := mcp.NewTool("inlay_hints",
+		mcp.WithDescription("Get inlay hints showing type annotations, parameter names, and other inline information within a line range."),
+		mcp.WithString("filePath",
+			mcp.Required(),
+			mcp.Description("Path to the file to get inlay hints for"),
+		),
+		mcp.WithNumber("startLine",
+			mcp.Required(),
+			mcp.Description("Start line of the range (1-indexed)"),
+		),
+		mcp.WithNumber("endLine",
+			mcp.Required(),
+			mcp.Description("End line of the range (1-indexed)"),
+		),
+	)
+
+	s.mcpServer.AddTool(inlayHintsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		filePath, ok := request.Params.Arguments["filePath"].(string)
+		if !ok {
+			return mcp.NewToolResultError("filePath must be a string"), nil
+		}
+
+		var startLine, endLine int
+		switch v := request.Params.Arguments["startLine"].(type) {
+		case float64:
+			startLine = int(v)
+		case int:
+			startLine = v
+		default:
+			return mcp.NewToolResultError("startLine must be a number"), nil
+		}
+
+		switch v := request.Params.Arguments["endLine"].(type) {
+		case float64:
+			endLine = int(v)
+		case int:
+			endLine = v
+		default:
+			return mcp.NewToolResultError("endLine must be a number"), nil
+		}
+
+		coreLogger.Debug("Executing inlay_hints for file: %s lines: %d-%d", filePath, startLine, endLine)
+		text, err := tools.GetInlayHints(ctx, s.lspClient, filePath, startLine, endLine)
+		if err != nil {
+			coreLogger.Error("Failed to get inlay hints: %v", err)
+			return mcp.NewToolResultError(fmt.Sprintf("failed to get inlay hints: %v", err)), nil
+		}
+		return mcp.NewToolResultText(text), nil
+	})
+}
+
+func (s *mcpServer) registerWorkspaceSymbolResolveTool() {
+	workspaceSymbolResolveTool := mcp.NewTool("workspace_symbol_resolve",
+		mcp.WithDescription("Search for symbols across the workspace with enhanced details including location and container information."),
+		mcp.WithString("query",
+			mcp.Required(),
+			mcp.Description("The symbol name or pattern to search for"),
+		),
+	)
+
+	s.mcpServer.AddTool(workspaceSymbolResolveTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		query, ok := request.Params.Arguments["query"].(string)
+		if !ok {
+			return mcp.NewToolResultError("query must be a string"), nil
+		}
+
+		coreLogger.Debug("Executing workspace_symbol_resolve for query: %s", query)
+		text, err := tools.GetWorkspaceSymbolResolved(ctx, s.lspClient, query)
+		if err != nil {
+			coreLogger.Error("Failed to resolve workspace symbol: %v", err)
+			return mcp.NewToolResultError(fmt.Sprintf("failed to resolve workspace symbol: %v", err)), nil
+		}
+		return mcp.NewToolResultText(text), nil
+	})
+}
+
+func (s *mcpServer) registerFormatDocumentTool() {
+	formatDocumentTool := mcp.NewTool("format_document",
+		mcp.WithDescription("Format a document or range using the language server's formatting capabilities."),
+		mcp.WithString("filePath",
+			mcp.Required(),
+			mcp.Description("Path to the file to format"),
+		),
+		mcp.WithString("mode",
+			mcp.Description("Formatting mode: 'full' (entire document), 'range' (specific range), or 'ontype' (on typing). Default: 'full'"),
+		),
+		mcp.WithNumber("startLine",
+			mcp.Description("Start line for range/ontype mode (1-indexed)"),
+		),
+		mcp.WithNumber("startColumn",
+			mcp.Description("Start column for range/ontype mode (1-indexed)"),
+		),
+		mcp.WithNumber("endLine",
+			mcp.Description("End line for range mode (1-indexed)"),
+		),
+		mcp.WithNumber("endColumn",
+			mcp.Description("End column for range mode (1-indexed)"),
+		),
+		mcp.WithString("triggerChar",
+			mcp.Description("The character that triggered formatting (only for 'ontype' mode)"),
+		),
+	)
+
+	s.mcpServer.AddTool(formatDocumentTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		filePath, ok := request.Params.Arguments["filePath"].(string)
+		if !ok {
+			return mcp.NewToolResultError("filePath must be a string"), nil
+		}
+
+		mode := "full"
+		if m, ok := request.Params.Arguments["mode"].(string); ok && m != "" {
+			mode = m
+		}
+
+		var startLine, startColumn, endLine, endColumn int
+		if v, ok := request.Params.Arguments["startLine"].(float64); ok {
+			startLine = int(v)
+		}
+		if v, ok := request.Params.Arguments["startColumn"].(float64); ok {
+			startColumn = int(v)
+		}
+		if v, ok := request.Params.Arguments["endLine"].(float64); ok {
+			endLine = int(v)
+		}
+		if v, ok := request.Params.Arguments["endColumn"].(float64); ok {
+			endColumn = int(v)
+		}
+
+		triggerChar := ""
+		if tc, ok := request.Params.Arguments["triggerChar"].(string); ok {
+			triggerChar = tc
+		}
+
+		coreLogger.Debug("Executing format_document for file: %s mode: %s", filePath, mode)
+		text, err := tools.FormatDocument(ctx, s.lspClient, filePath, mode, startLine, startColumn, endLine, endColumn, triggerChar)
+		if err != nil {
+			coreLogger.Error("Failed to format document: %v", err)
+			return mcp.NewToolResultError(fmt.Sprintf("failed to format document: %v", err)), nil
+		}
+		return mcp.NewToolResultText(text), nil
+	})
+}
+
+func (s *mcpServer) registerFoldingRangeTool() {
+	foldingRangeTool := mcp.NewTool("folding_range",
+		mcp.WithDescription("Get folding ranges for a document, identifying collapsible regions like functions, classes, and blocks."),
+		mcp.WithString("filePath",
+			mcp.Required(),
+			mcp.Description("Path to the file to get folding ranges for"),
+		),
+	)
+
+	s.mcpServer.AddTool(foldingRangeTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		filePath, ok := request.Params.Arguments["filePath"].(string)
+		if !ok {
+			return mcp.NewToolResultError("filePath must be a string"), nil
+		}
+
+		coreLogger.Debug("Executing folding_range for file: %s", filePath)
+		text, err := tools.GetFoldingRanges(ctx, s.lspClient, filePath)
+		if err != nil {
+			coreLogger.Error("Failed to get folding ranges: %v", err)
+			return mcp.NewToolResultError(fmt.Sprintf("failed to get folding ranges: %v", err)), nil
+		}
+		return mcp.NewToolResultText(text), nil
+	})
+}
+
+func (s *mcpServer) registerSelectionRangeTool() {
+	selectionRangeTool := mcp.NewTool("selection_range",
+		mcp.WithDescription("Get hierarchical selection ranges at a position for smart expand/shrink selection."),
+		mcp.WithString("filePath",
+			mcp.Required(),
+			mcp.Description("Path to the file"),
+		),
+		mcp.WithNumber("line",
+			mcp.Required(),
+			mcp.Description("Line number (1-indexed)"),
+		),
+		mcp.WithNumber("column",
+			mcp.Required(),
+			mcp.Description("Column number (1-indexed)"),
+		),
+	)
+
+	s.mcpServer.AddTool(selectionRangeTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		filePath, ok := request.Params.Arguments["filePath"].(string)
+		if !ok {
+			return mcp.NewToolResultError("filePath must be a string"), nil
+		}
+
+		var line, column int
+		switch v := request.Params.Arguments["line"].(type) {
+		case float64:
+			line = int(v)
+		case int:
+			line = v
+		default:
+			return mcp.NewToolResultError("line must be a number"), nil
+		}
+
+		switch v := request.Params.Arguments["column"].(type) {
+		case float64:
+			column = int(v)
+		case int:
+			column = v
+		default:
+			return mcp.NewToolResultError("column must be a number"), nil
+		}
+
+		coreLogger.Debug("Executing selection_range for file: %s line: %d column: %d", filePath, line, column)
+		text, err := tools.GetSelectionRanges(ctx, s.lspClient, filePath, line, column)
+		if err != nil {
+			coreLogger.Error("Failed to get selection ranges: %v", err)
+			return mcp.NewToolResultError(fmt.Sprintf("failed to get selection ranges: %v", err)), nil
+		}
+		return mcp.NewToolResultText(text), nil
+	})
+}
+
 func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 	// Handle nil capabilities gracefully
 	if caps == nil {
@@ -626,6 +948,13 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 	coreLogger.Info("Document Symbols: %v", lsp.HasDocumentSymbolSupport(caps))
 	coreLogger.Info("Call Hierarchy: %v", lsp.HasCallHierarchySupport(caps))
 	coreLogger.Info("Workspace Symbols: %v", lsp.HasWorkspaceSymbolSupport(caps))
+	coreLogger.Info("Semantic Tokens: %v", lsp.HasSemanticTokensSupport(caps))
+	coreLogger.Info("Type Hierarchy: %v", lsp.HasTypeHierarchySupport(caps))
+	coreLogger.Info("Inlay Hints: %v", lsp.HasInlayHintSupport(caps))
+	coreLogger.Info("Workspace Symbol Resolve: %v", lsp.HasWorkspaceSymbolResolveSupport(caps))
+	coreLogger.Info("Formatting: %v", lsp.HasFormattingSupport(caps))
+	coreLogger.Info("Folding Range: %v", lsp.HasFoldingRangeSupport(caps))
+	coreLogger.Info("Selection Range: %v", lsp.HasSelectionRangeSupport(caps))
 	coreLogger.Info("===============================")
 
 	// Always register core tools (capability-independent)
@@ -696,6 +1025,56 @@ func (s *mcpServer) registerTools(caps *protocol.ServerCapabilities) error {
 		s.registerExecuteCodeLensTool()
 	} else {
 		coreLogger.Info("Skipping 'get_codelens' and 'execute_codelens' tools - LSP server doesn't support CodeLens capability")
+	}
+
+	// Advanced LSP capabilities (LSP 3.16+)
+	if lsp.HasSemanticTokensSupport(caps) {
+		coreLogger.Debug("Registering 'semantic_tokens' tool")
+		s.registerSemanticTokensTool()
+	} else {
+		coreLogger.Info("Skipping 'semantic_tokens' tool - LSP server doesn't support SemanticTokens capability")
+	}
+
+	if lsp.HasTypeHierarchySupport(caps) {
+		coreLogger.Debug("Registering 'type_hierarchy' tool")
+		s.registerTypeHierarchyTool()
+	} else {
+		coreLogger.Info("Skipping 'type_hierarchy' tool - LSP server doesn't support TypeHierarchy capability")
+	}
+
+	if lsp.HasInlayHintSupport(caps) {
+		coreLogger.Debug("Registering 'inlay_hints' tool")
+		s.registerInlayHintsTool()
+	} else {
+		coreLogger.Info("Skipping 'inlay_hints' tool - LSP server doesn't support InlayHint capability")
+	}
+
+	if lsp.HasWorkspaceSymbolResolveSupport(caps) {
+		coreLogger.Debug("Registering 'workspace_symbol_resolve' tool")
+		s.registerWorkspaceSymbolResolveTool()
+	} else {
+		coreLogger.Info("Skipping 'workspace_symbol_resolve' tool - LSP server doesn't support WorkspaceSymbol Resolve capability")
+	}
+
+	if lsp.HasFormattingSupport(caps) {
+		coreLogger.Debug("Registering 'format_document' tool")
+		s.registerFormatDocumentTool()
+	} else {
+		coreLogger.Info("Skipping 'format_document' tool - LSP server doesn't support Formatting capability")
+	}
+
+	if lsp.HasFoldingRangeSupport(caps) {
+		coreLogger.Debug("Registering 'folding_range' tool")
+		s.registerFoldingRangeTool()
+	} else {
+		coreLogger.Info("Skipping 'folding_range' tool - LSP server doesn't support FoldingRange capability")
+	}
+
+	if lsp.HasSelectionRangeSupport(caps) {
+		coreLogger.Debug("Registering 'selection_range' tool")
+		s.registerSelectionRangeTool()
+	} else {
+		coreLogger.Info("Skipping 'selection_range' tool - LSP server doesn't support SelectionRange capability")
 	}
 
 	coreLogger.Info("Successfully registered MCP tools")
