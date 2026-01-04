@@ -125,6 +125,39 @@ func HasCodeLensSupport(caps *protocol.ServerCapabilities) bool {
 	return caps.CodeLensProvider != nil
 }
 
+// HasFoldingRangeSupport checks if the server supports textDocument/foldingRange.
+//
+// CRITICAL: Uses two-part check for Or_* type (pointer != nil && .Value != nil).
+func HasFoldingRangeSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.FoldingRangeProvider != nil &&
+		caps.FoldingRangeProvider.Value != nil
+}
+
+// HasSelectionRangeSupport checks if the server supports textDocument/selectionRange.
+//
+// CRITICAL: Uses two-part check for Or_* type (pointer != nil && .Value != nil).
+func HasSelectionRangeSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.SelectionRangeProvider != nil &&
+		caps.SelectionRangeProvider.Value != nil
+}
+
+// HasSemanticTokensSupport checks if the server supports textDocument/semanticTokens.
+//
+// SemanticTokensProvider is interface{} type - can be SemanticTokensOptions or SemanticTokensRegistrationOptions.
+// Simple nil check is sufficient (no .Value field to check).
+func HasSemanticTokensSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.SemanticTokensProvider != nil
+}
+
 // AlwaysSupported returns true for core tools that don't require capability checks.
 //
 // Core tools:
@@ -134,4 +167,87 @@ func HasCodeLensSupport(caps *protocol.ServerCapabilities) bool {
 // This function exists for documentation and consistency with the capability check pattern.
 func AlwaysSupported() bool {
 	return true
+}
+
+// HasWorkspaceSymbolResolveSupport checks if the server supports workspace/resolveWorkspaceSymbol.
+//
+// This capability is part of WorkspaceSymbolOptions.ResolveProvider (LSP 3.17+).
+// The server can provide workspace symbols and then resolve additional details for them.
+//
+// CRITICAL: Uses two-part check for Or_* type (pointer != nil && .Value != nil),
+// then checks if Value is WorkspaceSymbolOptions with ResolveProvider = true.
+func HasWorkspaceSymbolResolveSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	if caps.WorkspaceSymbolProvider == nil || caps.WorkspaceSymbolProvider.Value == nil {
+		return false
+	}
+
+	// Check if Value is WorkspaceSymbolOptions with ResolveProvider set
+	if opts, ok := caps.WorkspaceSymbolProvider.Value.(protocol.WorkspaceSymbolOptions); ok {
+		return opts.ResolveProvider
+	}
+
+	// If it's just a bool (not WorkspaceSymbolOptions), no resolve support
+	return false
+}
+
+// HasPrepareRenameSupport checks if the server supports textDocument/prepareRename.
+//
+// PrepareRename allows validating a rename operation before executing it.
+// This is indicated by RenameProvider being a struct with prepareProvider field.
+//
+// RenameProvider is interface{} type - can be bool or map[string]interface{}.
+func HasPrepareRenameSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	if caps.RenameProvider == nil {
+		return false
+	}
+
+	// Check if it's a map with prepareProvider field
+	if opts, ok := caps.RenameProvider.(map[string]interface{}); ok {
+		if prepareProvider, exists := opts["prepareProvider"]; exists {
+			if prepare, ok := prepareProvider.(bool); ok {
+				return prepare
+			}
+		}
+	}
+
+	return false
+}
+
+// HasFormattingSupport checks if the server supports textDocument/formatting.
+//
+// CRITICAL: Uses two-part check for Or_* type (pointer != nil && .Value != nil).
+func HasFormattingSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.DocumentFormattingProvider != nil &&
+		caps.DocumentFormattingProvider.Value != nil
+}
+
+// HasRangeFormattingSupport checks if the server supports textDocument/rangeFormatting.
+//
+// CRITICAL: Uses two-part check for Or_* type (pointer != nil && .Value != nil).
+func HasRangeFormattingSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.DocumentRangeFormattingProvider != nil &&
+		caps.DocumentRangeFormattingProvider.Value != nil
+}
+
+// HasOnTypeFormattingSupport checks if the server supports textDocument/onTypeFormatting.
+//
+// DocumentOnTypeFormattingProvider is *DocumentOnTypeFormattingOptions type.
+// Simple nil check is sufficient (pointer type, not Or_* type).
+func HasOnTypeFormattingSupport(caps *protocol.ServerCapabilities) bool {
+	if caps == nil {
+		return false
+	}
+	return caps.DocumentOnTypeFormattingProvider != nil
 }

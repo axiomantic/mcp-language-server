@@ -396,3 +396,46 @@ func TestHasCodeLensSupport(t *testing.T) {
 		})
 	}
 }
+
+func TestHasSemanticTokensSupport(t *testing.T) {
+	tests := []struct {
+		name     string
+		caps     *protocol.ServerCapabilities
+		expected bool
+	}{
+		{
+			name: "semantic tokens supported",
+			caps: &protocol.ServerCapabilities{
+				SemanticTokensProvider: map[string]interface{}{
+					"legend": map[string]interface{}{
+						"tokenTypes":     []string{"namespace", "type"},
+						"tokenModifiers": []string{"declaration", "definition"},
+					},
+					"full": true,
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "semantic tokens not supported (nil)",
+			caps: &protocol.ServerCapabilities{
+				SemanticTokensProvider: nil,
+			},
+			expected: false,
+		},
+		{
+			name:     "nil capabilities",
+			caps:     nil,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := HasSemanticTokensSupport(tt.caps)
+			if result != tt.expected {
+				t.Errorf("HasSemanticTokensSupport() = %v, expected %v", result, tt.expected)
+			}
+		})
+	}
+}
