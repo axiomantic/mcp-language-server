@@ -51,6 +51,9 @@ type Client struct {
 	// Server capabilities
 	capabilities *protocol.ServerCapabilities
 
+	// File operations handler
+	fileOpsHandler FileOperationsHandler
+
 	// Close synchronization
 	closeOnce sync.Once
 	closeErr  error

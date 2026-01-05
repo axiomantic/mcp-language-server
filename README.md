@@ -20,6 +20,92 @@ This is an [MCP](https://modelcontextprotocol.io/introduction) server that runs 
 3. **Install a language server**: _follow one of the guides below_
 4. **Configure your MCP client**: _follow one of the guides below_
 
+## Transport Options
+
+The MCP Language Server supports two transport modes:
+
+### Stdio Transport (Default)
+
+Standard input/output transport for direct process communication. This is the default mode and requires no additional flags.
+
+```bash
+mcp-language-server --workspace=/path/to/project --lsp=gopls
+```
+
+### HTTP Transport
+
+HTTP transport for network-based communication, useful for web UIs or multiple clients.
+
+```bash
+mcp-language-server --workspace=/path/to/project --lsp=gopls --transport=http --port=8080
+```
+
+**Endpoint:** `http://localhost:8080/mcp/v1`
+
+**CLI Flags:**
+- `--transport` - Transport type: `stdio` (default) or `http`
+- `--port` - Port for HTTP transport (default: 8080)
+
+**Security Notice:** HTTP transport is designed for local development only. The server binds to localhost and does not include authentication. Do NOT expose the HTTP port to untrusted networks.
+
+## File Operations
+
+When files are created, renamed, or deleted in your workspace, the server sends `notifications/resources/updated` to all connected MCP clients. This allows clients to stay synchronized with workspace changes.
+
+### Notification Format
+
+**Method:** `notifications/resources/updated`
+
+**Payload:**
+```json
+{
+  "type": "created|renamed|deleted",
+  "uris": ["file:///workspace/path/to/file.go"]
+}
+```
+
+### Examples
+
+**File Created:**
+```json
+{
+  "type": "created",
+  "uris": ["file:///workspace/main.go"]
+}
+```
+
+**File Renamed:**
+```json
+{
+  "type": "renamed",
+  "uris": [
+    "file:///workspace/old.go",
+    "file:///workspace/new.go"
+  ]
+}
+```
+
+**File Deleted:**
+```json
+{
+  "type": "deleted",
+  "uris": ["file:///workspace/temp.go"]
+}
+```
+
+### Client-Side Handling
+
+MCP clients can subscribe to these notifications to invalidate caches or update UI:
+
+```javascript
+mcpClient.on('notifications/resources/updated', (params) => {
+  console.log(`Files ${params.type}:`, params.uris);
+  // Refresh your file cache/UI
+});
+```
+
+**Note:** The server uses a 100ms debounce window to detect rename operations (delete + create pairs). Notifications are best-effort and clients should handle missed notifications gracefully.
+
 <details>
   <summary>Go (gopls)</summary>
   <div>

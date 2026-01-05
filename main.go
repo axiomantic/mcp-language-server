@@ -8,9 +8,11 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/isaacphi/mcp-language-server/internal/fileops"
 	"github.com/isaacphi/mcp-language-server/internal/logging"
 	"github.com/isaacphi/mcp-language-server/internal/lsp"
 	"github.com/isaacphi/mcp-language-server/internal/protocol"
@@ -25,6 +27,8 @@ type config struct {
 	workspaceDir string
 	lspCommand   string
 	lspArgs      []string
+	transport    string // "stdio" or "http"
+	httpPort     int    // Port for HTTP transport (default: 8080)
 }
 
 type mcpServer struct {
@@ -35,16 +39,63 @@ type mcpServer struct {
 	cancelFunc       context.CancelFunc
 	workspaceWatcher *watcher.WorkspaceWatcher
 	capabilities     *protocol.ServerCapabilities
+	fileOpsHandler   *fileops.FileOperationsHandler
+}
+
+// mcpNotificationListener implements fileops.FileOperationsListener
+// and sends MCP notifications for file events
+type mcpNotificationListener struct {
+	server *server.MCPServer
+}
+
+// OnFileEvent implements fileops.FileOperationsListener
+func (l *mcpNotificationListener) OnFileEvent(event fileops.FileEvent) {
+	if l.server == nil {
+		coreLogger.Debug("MCP server not initialized, skipping notification")
+		return
+	}
+
+	if len(event.URIs) == 0 {
+		coreLogger.Debug("No URIs in event, skipping notification")
+		return
+	}
+
+	params := map[string]interface{}{
+		"type": event.Type.String(),
+		"uris": event.URIs,
+	}
+
+	coreLogger.Info("Sending MCP notification: type=%s, uris=%d", event.Type.String(), len(event.URIs))
+
+	// Send notification to all connected MCP clients
+	l.server.SendNotificationToAllClients(
+		"notifications/resources/updated",
+		params,
+	)
 }
 
 func parseConfig() (*config, error) {
 	cfg := &config{}
 	flag.StringVar(&cfg.workspaceDir, "workspace", "", "Path to workspace directory")
 	flag.StringVar(&cfg.lspCommand, "lsp", "", "LSP command to run (args should be passed after --)")
+	flag.StringVar(&cfg.transport, "transport", "stdio", "Transport type: stdio or http")
+	flag.IntVar(&cfg.httpPort, "port", 8080, "Port for HTTP transport")
 	flag.Parse()
 
 	// Get remaining args after -- as LSP arguments
 	cfg.lspArgs = flag.Args()
+
+	// Validate transport
+	if cfg.transport != "stdio" && cfg.transport != "http" {
+		return nil, fmt.Errorf("invalid transport: %s (must be stdio or http)", cfg.transport)
+	}
+
+	// Validate port for HTTP mode
+	if cfg.transport == "http" {
+		if cfg.httpPort < 1 || cfg.httpPort > 65535 {
+			return nil, fmt.Errorf("invalid port: %d (must be 1-65535)", cfg.httpPort)
+		}
+	}
 
 	// Validate workspace directory
 	if cfg.workspaceDir == "" {
@@ -120,12 +171,67 @@ func (s *mcpServer) start() error {
 		server.WithRecovery(),
 	)
 
+	// Create and wire file operations handler
+	s.fileOpsHandler = fileops.NewFileOperationsHandler()
+
+	// Create MCP notification listener and register with handler
+	mcpListener := &mcpNotificationListener{server: s.mcpServer}
+	s.fileOpsHandler.RegisterListener(mcpListener)
+	coreLogger.Info("MCP notification listener registered with FileOperationsHandler")
+
+	// Connect file operations handler to LSP client
+	if s.lspClient != nil {
+		s.lspClient.SetFileOperationsHandler(s.fileOpsHandler)
+		coreLogger.Info("FileOperationsHandler connected to LSP client")
+	}
+
 	err := s.registerTools(s.capabilities)
 	if err != nil {
 		return fmt.Errorf("tool registration failed: %v", err)
 	}
 
-	return server.ServeStdio(s.mcpServer)
+	// Transport selection based on config
+	switch s.config.transport {
+	case "stdio":
+		coreLogger.Info("Starting MCP server with stdio transport")
+		return server.ServeStdio(s.mcpServer)
+
+	case "http":
+		coreLogger.Info("Starting MCP server with HTTP transport on port %d", s.config.httpPort)
+		return s.serveHTTP()
+
+	default:
+		return fmt.Errorf("unsupported transport: %s", s.config.transport)
+	}
+}
+
+func (s *mcpServer) serveHTTP() error {
+	// Create StreamableHTTPServer with mcp-go v0.43.2 API
+	httpServer := server.NewStreamableHTTPServer(
+		s.mcpServer,
+		server.WithEndpointPath("/mcp/v1"),
+		server.WithStateful(true),
+		server.WithHeartbeatInterval(30*time.Second),
+	)
+
+	// Bind to localhost only for security
+	addr := fmt.Sprintf("localhost:%d", s.config.httpPort)
+	coreLogger.Info("HTTP server listening on %s", addr)
+
+	// Start blocks until error or shutdown
+	err := httpServer.Start(addr)
+	if err != nil {
+		// Provide helpful error messages
+		if strings.Contains(err.Error(), "address already in use") {
+			return fmt.Errorf("port %d is already in use, try a different port with --port", s.config.httpPort)
+		}
+		if strings.Contains(err.Error(), "permission denied") {
+			return fmt.Errorf("permission denied to bind port %d, try a port > 1024", s.config.httpPort)
+		}
+		return fmt.Errorf("HTTP server failed: %w", err)
+	}
+
+	return nil
 }
 
 func main() {

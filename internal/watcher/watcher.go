@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/isaacphi/mcp-language-server/internal/fileops"
 	"github.com/isaacphi/mcp-language-server/internal/logging"
 	"github.com/isaacphi/mcp-language-server/internal/lsp"
 	"github.com/isaacphi/mcp-language-server/internal/protocol"
@@ -17,6 +18,16 @@ import (
 
 // Create a logger for the watcher component
 var watcherLogger = logging.NewLogger(logging.Watcher)
+
+// Rename detection window - time to wait for a create after a delete to detect renames
+const renameDetectionWindow = 100 * time.Millisecond
+
+// pendingFileEvent represents a file event waiting for potential rename detection
+type pendingFileEvent struct {
+	eventType string // "delete"
+	uri       string
+	timestamp time.Time
+}
 
 // WorkspaceWatcher manages LSP file watching
 type WorkspaceWatcher struct {
@@ -33,6 +44,19 @@ type WorkspaceWatcher struct {
 
 	// Gitignore matcher
 	gitignore *GitignoreMatcher
+
+	// File operations tracking for rename detection
+	fileOpsHandler fileOpsHandlerInterface
+	pendingEvents  map[string]*pendingFileEvent
+	eventsMu       sync.Mutex
+}
+
+// fileOpsHandlerInterface defines the interface for handling file operations
+// This allows us to use both the real handler and mock handlers in tests
+type fileOpsHandlerInterface interface {
+	OnCreate(files []fileops.FileCreate)
+	OnRename(files []fileops.FileRename)
+	OnDelete(files []fileops.FileDelete)
 }
 
 // NewWorkspaceWatcher creates a new workspace watcher with default configuration
@@ -47,6 +71,7 @@ func NewWorkspaceWatcherWithConfig(client LSPClient, config *WatcherConfig) *Wor
 		config:        config,
 		debounceMap:   make(map[string]*time.Timer),
 		registrations: []protocol.FileSystemWatcher{},
+		pendingEvents: make(map[string]*pendingFileEvent),
 	}
 }
 
@@ -648,4 +673,61 @@ func (w *WorkspaceWatcher) openMatchingFile(ctx context.Context, path string) {
 			watcherLogger.Debug("Error opening file %s: %v", path, err)
 		}
 	}
+}
+
+// trackDeleteEvent stores a delete event for potential rename detection
+func (w *WorkspaceWatcher) trackDeleteEvent(uri string, handler fileOpsHandlerInterface) {
+	w.eventsMu.Lock()
+	defer w.eventsMu.Unlock()
+
+	now := time.Now()
+	w.pendingEvents[uri] = &pendingFileEvent{
+		eventType: "delete",
+		uri:       uri,
+		timestamp: now,
+	}
+
+	// Schedule timeout to finalize as delete if no matching create
+	time.AfterFunc(renameDetectionWindow, func() {
+		w.processDeleteTimeout(uri, handler)
+	})
+}
+
+// checkForRename checks if a create event matches a pending delete (rename)
+// Returns true if a rename was detected, false otherwise
+func (w *WorkspaceWatcher) checkForRename(newURI string, handler fileOpsHandlerInterface) bool {
+	w.eventsMu.Lock()
+	defer w.eventsMu.Unlock()
+
+	now := time.Now()
+
+	// Check all pending deletes for potential rename
+	for oldURI, pending := range w.pendingEvents {
+		if pending.eventType == "delete" &&
+			now.Sub(pending.timestamp) < renameDetectionWindow {
+			// This is a rename!
+			handler.OnRename([]fileops.FileRename{
+				{OldURI: oldURI, NewURI: newURI},
+			})
+			delete(w.pendingEvents, oldURI)
+			return true
+		}
+	}
+
+	return false
+}
+
+// processDeleteTimeout finalizes a delete that wasn't part of a rename
+func (w *WorkspaceWatcher) processDeleteTimeout(uri string, handler fileOpsHandlerInterface) {
+	w.eventsMu.Lock()
+	defer w.eventsMu.Unlock()
+
+	_, exists := w.pendingEvents[uri]
+	if !exists {
+		return // Already processed as rename
+	}
+
+	// No matching create found, this is a real delete
+	handler.OnDelete([]fileops.FileDelete{{URI: uri}})
+	delete(w.pendingEvents, uri)
 }
